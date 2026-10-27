@@ -1,50 +1,50 @@
 # AGENTS.md
 
-## Conventions
+## 通用约定
 
-- Before the first tool call, briefly state what you're about to do.
-- Keep the user informed throughout the task. Provide concise progress updates at meaningful milestones and during extended investigations, even when there are no significant findings. Explain the current direction and next steps without narrating every tool call or going silent for long periods.
-- Do not comment on facts obvious from code.
-- Tests describe behavior, not correctness. When behavior is obsolete, update the code and tests together; explain the rationale in the change summary or PR.
-- Use `~/tmp/<workspace>/<topic>/` for temporary/scratch work instead of `/tmp/`.
+- 首次调用工具前，简要说明接下来要做什么。
+- 任务执行期间持续向用户同步进展。在重要阶段节点或长时间调查过程中，主动提供简短的进度更新，即使没有重要发现。说明当前工作方向和下一步计划，不要逐一播报工具调用，也不要长时间保持沉默。
+- 不要为代码中显而易见的事实添加注释。
+- 测试描述的是行为，而不是正确性。当现有行为不再适用时，应同时更新代码和测试，并在变更总结或 PR 中解释原因。
+- 临时文件和草稿工作应放在 `~/tmp/<workspace>/<topic>/` 下，而不是 `/tmp/`。
 
 ## GitHub
 
-- `gh` is installed and authenticated; use it instead of unauthenticated `api.github.com` calls.
+- `gh` 已安装并完成认证，优先使用它，而不是未经认证的 `api.github.com` 请求。
 
-## Memory
+## 记忆
 
-Your memory is OptMem:
-- The tool is `memo`
-- Your memories are in `~/.optmem/memory`
-- Scopes: `user` for the user's preferences and background, `global` for reusable knowledge, `workspace` for the current directory.
+你的记忆系统是 OptMem：
+- 工具：`memo`
+- 记忆目录：`~/.optmem/memory`
+- 作用域：`user` 用于用户偏好和背景信息，`global` 用于可复用的知识，`workspace` 用于当前工作目录。
 
-### Subagents
+### 子 Agent
 
-Subagents must not use `memo`. All other instructions in this section apply only to the main agent.
+子 Agent 不得使用 `memo`。本章节的其他指令仅适用于主 Agent。
 
-When spawning a subagent, write: `You are a subagent. Don't run memo.`
+创建子 Agent 时，在其指令中写入：`You are a subagent. Don't run memo.`
 
-### At startup: activating OptMem (mandatory)
+### 启动时：激活 OptMem（强制）
 
-Run `memo wake` before any other tool call, in every session, to read the memory.
+每次会话开始时，必须先执行 `memo wake` 读取记忆，再调用其他工具。
 
-### While working: register memories
+### 工作过程中：记录记忆
 
-Propose a memory when you learn something likely to be useful in future tasks, such as a lasting user preference, a reusable insight, or an important project decision. Do not record transient findings, incidental personal information, or redundant memories.
+当发现可能对未来任务有帮助的信息时，提议将其记录为记忆，例如长期有效的用户偏好、可复用的经验或重要的项目决策。不要记录临时性发现、无关的个人信息或重复的记忆。
 
-Before every `memo note`, use `ask_user_question` to request explicit approval for the proposed memory. Only record the approved content.
+每次调用 `memo note` 前，必须通过 `ask_user_question` 请求用户明确批准拟记录的内容。只能记录用户批准的内容。
 
-Call `memo note --scope SCOPE "<1 line, max 280 bytes>"` to save an approved memory.
+使用 `memo note --scope SCOPE "<1 line, max 280 bytes>"` 保存已获批准的记忆。
 
-Start each note with one short topic in square brackets, e.g. `[Git] ...`. Reuse existing topics when possible.
+每条记忆以方括号中的简短主题开头，例如 `[Git] ...`。尽可能复用已有主题。
 
-If `memo note` asks for compression, complete it before your next action.
+如果 `memo note` 要求压缩记忆，必须先完成压缩，再执行下一步操作。
 
-Never edit or delete anything under `~/.optmem/memory`: the tool manages it.
+不得直接编辑或删除 `~/.optmem/memory` 下的任何内容，这些内容由工具管理。
 
-### When you need an old memory: search, or navigate
+### 查找旧记忆：搜索或浏览
 
-`memo recall <regex>` searches every memory, word for word.
+`memo recall <regex>` 使用正则表达式在所有记忆中搜索匹配的文本。
 
-Your memories also form a binary tree: #0-1, #2-3 ... exist as one-line summaries, pairs of those as #0-3, and so on -- every `#a-b` line wake prints is one node of it. `memo zoom --scope SCOPE <a-b>` opens a node into its two halves, down to the raw memories.
+记忆也以二叉树组织：`#0-1`、`#2-3` 等是单行摘要，相邻的摘要进一步合并为 `#0-3` 等更高层级的摘要，依此类推。`memo wake` 输出的每一行 `#a-b` 都对应树中的一个节点。使用 `memo zoom --scope SCOPE <a-b>` 可以将节点逐级展开为两个子节点，直到原始记忆。
