@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# dsh-url — 输出指定 dsh profile 的 Web GUI 访问 URL（默认 web）。
+#
+# URL 里的 ?token= 是随进程启动生成的临时令牌，dsh web 每次重启都会换新。
+# journal 会保留历史启动记录（且持久化到磁盘，重启后仍在），所以“取最新匹配行”
+# 可能拿到已经失效的旧 token；本脚本按当前 systemd invocation 过滤，只读取本次
+# 启动写下的那一行。
+#
+# 用法：dsh-url [profile]
+#   profile 默认 web；对应的 unit 为 dsh-<profile>@<当前用户名>.service。
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+用法：dsh-url [profile]
+
+输出指定 profile 的 Web GUI 登录链接（带 ?token=），profile 默认 web。
+对应的 systemd unit 为 dsh-<profile>@<当前用户名>.service，要求它处于 active 状态。
+
+示例：dsh-url          # web profile
+      dsh-url dev      # dev profile
+EOF
+}
+
+case "${1-}" in
+  -h|--help) usage; exit 0 ;;
+esac
+[ "$#" -le 1 ] || { echo "dsh-url：最多接受一个 profile 参数" >&2; exit 2; }
+
+profile="${1:-web}"
+if [[ ! "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "dsh-url：profile 名不合法：$profile" >&2
+  exit 2
+fi
+
+service="dsh-${profile}@$(id -un).service"
+attempts=5
+
+if ! systemctl is-active --quiet "$service"; then
+  state=$(systemctl is-active "$service" 2>/dev/null || true)
+  echo "dsh-url：$service 状态为 $state，未在运行。" >&2
+  echo "  启动：sudo systemctl start $service" >&2
+  exit 1
+fi
+
+invocation=$(systemctl show -p InvocationID --value "$service")
+if [ -z "$invocation" ]; then
+  echo "dsh-url：$service 没有 invocation id。" >&2
+  exit 1
+fi
+
+url=
+for _ in $(seq "$attempts"); do
+  logs=$(journalctl -u "$service" --no-pager -o cat \
+           "_SYSTEMD_INVOCATION_ID=$invocation" 2>&1) || {
+    echo "dsh-url：无法读取 $service 的 journal：" >&2
+    printf '%s\n' "$logs" >&2
+    exit 1
+  }
+  # 同一行可能先输出 loopback URL，再追加 LAN URL；取第一个，避免被后者覆盖。
+  url=$(printf '%s\n' "$logs" \
+        | grep -F 'dsh web:' \
+        | tail -n 1 \
+        | grep -oE 'https?://[^[:space:]]+\?token=[A-Za-z0-9._~-]+' \
+        | head -n 1 || true)
+  if [ -n "$url" ]; then
+    break
+  fi
+  sleep 1
+done
+
+if [ -z "$url" ]; then
+  echo "dsh-url：$service 正在运行，但 journal 中还没有带 token 的 URL。" >&2
+  echo "  journalctl -u $service | grep 'dsh web:'" >&2
+  exit 1
+fi
+
+printf '%s\n' "$url"

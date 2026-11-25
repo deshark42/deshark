@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# systemd 不继承 shell 环境，在此加载 nvm 和 pnpm。
+# 启动的 profile 由 DSH_PROFILE 决定（默认 web），dsh-dev@.service 用它启动 dev。
+# 不启用 nounset，nvm.sh 会引用未定义变量。
+
+set -eo pipefail
+
+: "${HOME:?dsh-serve: HOME 未设置，无法定位 nvm 和 pnpm}"
+
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$NVM_DIR/nvm.sh"
+fi
+
+export PATH="$PNPM_HOME/bin:$PATH"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "dsh-serve: 未找到 node（NVM_DIR=$NVM_DIR，PATH=$PATH）" >&2
+  exit 1
+fi
+
+DSH="$PNPM_HOME/bin/dsh"
+if [ ! -x "$DSH" ]; then
+  echo "dsh-serve: 未找到 dsh（$DSH），请先执行 pnpm add -g @deepseek-ai/dsh" >&2
+  exit 1
+fi
+
+exec "$DSH" "${DSH_PROFILE:-web}" --no-open "$@"

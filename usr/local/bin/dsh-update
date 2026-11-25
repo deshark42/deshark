@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# 更新全局安装的 DSH，然后重启当前用户的 Web 服务。
+# root 下直接管理系统服务；普通用户内部调用 sudo。
+
+set -euo pipefail
+
+PACKAGE='@deepseek-ai/dsh'
+SERVICE="${DSH_SERVICE:-dsh-web@$(id -un).service}"
+TAG='alpha'
+tag_seen=''
+DRY_RUN=''
+
+usage() {
+  cat <<'EOF'
+用法：dsh-update [选项或标签]
+
+默认更新到 alpha，然后重启当前用户的 Web 服务。
+  --alpha / --latest / --next   使用对应 npm 标签
+  -t, --tag <标签或版本号>      指定标签或版本，也支持 --tag=<值>
+  -n, --dry-run                只解析版本并打印计划，不停止服务、不安装
+  -h, --help                   显示帮助
+标签只能指定一次；DSH_SERVICE 可覆盖目标 systemd unit。
+
+示例：dsh-update --latest
+      dsh-update -t 0.2.0-rc.2
+EOF
+}
+
+die() {
+  printf '错误：%s\n' "$*" >&2
+  exit 2
+}
+
+set_tag() {
+  [ -z "$tag_seen" ] || die "只能指定一个标签，已经指定了 ${TAG}，又收到 $1"
+  TAG="$1"
+  tag_seen=1
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -n|--dry-run) DRY_RUN=1 ;;
+    --alpha|--latest|--next) set_tag "${1#--}" ;;
+    -t|--tag)
+      [ "$#" -ge 2 ] || die "选项 $1 需要跟一个标签"
+      shift
+      set_tag "$1"
+      ;;
+    --tag=*) set_tag "${1#*=}" ;;
+    -*) die "未知选项：$1（用 -h 查看帮助）" ;;
+    *) set_tag "$1" ;;
+  esac
+  shift
+done
+
+[[ $TAG =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+  die "标签必须以字母或数字开头，且只能包含字母、数字、点、下划线和连字符：$TAG"
+if [ "$(id -u)" -eq 0 ]; then
+  SUDO=()
+else
+  SUDO=(sudo)
+fi
+
+: "${HOME:?dsh-update: HOME 未设置}"
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  # nvm.sh 会引用未定义变量，加载时临时关闭 nounset。
+  set +u
+  # shellcheck disable=SC1091
+  . "$NVM_DIR/nvm.sh"
+  set -u
+fi
+export PATH="$PNPM_HOME/bin:$PATH"
+
+command -v pnpm >/dev/null 2>&1 || die "未找到 pnpm，请先安装并确保它在 PATH 中"
+[ ${#SUDO[@]} -eq 0 ] || command -v sudo >/dev/null 2>&1 ||
+  die "未找到 sudo，无法管理 ${SERVICE} 服务"
+
+# 解析失败时不停止服务，也不触碰已安装的版本。
+resolved_version="$(pnpm view "${PACKAGE}@${TAG}" version 2>/dev/null | head -n 1)" || true
+[ -n "$resolved_version" ] ||
+  die "无法解析 ${PACKAGE}@${TAG}，请检查标签或版本号是否正确、网络是否正常"
+previous_version="$(dsh --version 2>/dev/null | head -n 1)" || previous_version=''
+printf '目标：%s@%s → %s\n' "$PACKAGE" "$TAG" "$resolved_version"
+printf '当前版本：%s\n' "${previous_version:-未安装}"
+
+if [ -n "$DRY_RUN" ]; then
+  printf '（dry-run）将停止 %s → pnpm add -g %s@%s → 启动 %s，未做任何改动。\n' \
+    "$SERVICE" "$PACKAGE" "$TAG" "$SERVICE"
+  exit 0
+fi
+
+printf '正在停止 %s 服务…\n' "$SERVICE"
+"${SUDO[@]}" systemctl stop "$SERVICE"
+
+# 直接 add 替换版本，不先 remove；安装失败时尝试恢复原服务。
+printf '正在安装 %s@%s…\n' "$PACKAGE" "$TAG"
+if ! pnpm add -g "${PACKAGE}@${TAG}"; then
+  printf '错误：安装失败，已安装的 dsh 没有被卸载。\n' >&2
+  if [ -n "$previous_version" ]; then
+    printf '正在用原版本 %s 重新启动 %s 服务…\n' "$previous_version" "$SERVICE" >&2
+    "${SUDO[@]}" systemctl start "$SERVICE" ||
+      printf '警告：%s 启动失败，请手动检查：journalctl -u %s -n 50 --no-pager\n' \
+        "$SERVICE" "$SERVICE" >&2
+  else
+    printf '此前没有可用的 dsh 安装，%s 保持停止。\n' "$SERVICE" >&2
+  fi
+  exit 1
+fi
+
+printf '正在启动 %s 服务…\n' "$SERVICE"
+if ! "${SUDO[@]}" systemctl start "$SERVICE" || ! "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"; then
+  printf '错误：dsh 已更新到 %s，但 %s 未正常启动。\n' "$resolved_version" "$SERVICE" >&2
+  printf '排查：journalctl -u %s -n 50 --no-pager\n' "$SERVICE" >&2
+  [ -z "$previous_version" ] || printf '回退：dsh-update -t %s\n' "$previous_version" >&2
+  exit 1
+fi
+
+printf 'DSH 更新完成：%s → %s，%s 服务已启动。\n' "$TAG" "$resolved_version" "$SERVICE"

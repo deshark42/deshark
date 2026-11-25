@@ -1,0 +1,26 @@
+[Unit]
+Description=DeepSeek Harness Web GUI (dsh dev profile) for %i
+Documentation=https://github.com/deepseek-ai/dsh
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=%i
+# 工作目录和 HOME 均由 systemd 根据 User= 查询用户信息。
+WorkingDirectory=~
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
+Environment=LANG=C.UTF-8
+# 同一个入口脚本，profile 由 DSH_PROFILE 指定；端口和对外 URL 放在 /etc/dsh-dev.env。
+Environment=DSH_PROFILE=dev
+EnvironmentFile=-/etc/dsh-dev.env
+ExecStart=/usr/local/bin/dsh-serve $DSH_ARGS
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

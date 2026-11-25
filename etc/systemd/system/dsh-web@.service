@@ -1,0 +1,28 @@
+[Unit]
+Description=DeepSeek Harness Web GUI (dsh web) for %i
+Documentation=https://github.com/deepseek-ai/dsh
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=%i
+# 工作目录和 HOME 均由 systemd 根据 User= 查询用户信息。
+WorkingDirectory=~
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
+Environment=LANG=C.UTF-8
+# 监听地址和对外 URL 因机器而异，放在本机的 /etc/dsh-web.env 里，
+# 由 install.sh 在文件不存在时生成默认值（127.0.0.1:3080）。
+EnvironmentFile=-/etc/dsh-web.env
+# 入口脚本负责解析 nvm 的 node 路径并补充 pnpm 目录，
+# 避免把带版本号的 node 路径写死在本 unit 里。
+ExecStart=/usr/local/bin/dsh-serve $DSH_ARGS
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
