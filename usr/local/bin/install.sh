@@ -20,12 +20,12 @@ else
 fi
 
 # 仓库文件缺失时尽早失败，避免留下指向不存在文件的软链
-for f in dsh-serve dsh-update dsh-url memo; do
+for f in dsh-serve dsh-update dsh-url; do
   [[ -f "$repo/usr/local/bin/$f" ]] || die "缺少仓库文件：$repo/usr/local/bin/$f"
 done
 
 # 普通用户运行的脚本用软链，改仓库即生效
-for f in dsh-serve dsh-update dsh-url memo; do
+for f in dsh-serve dsh-update dsh-url; do
   "${SUDO[@]}" ln -sfn "$repo/usr/local/bin/$f" "/usr/local/bin/$f"
 done
 

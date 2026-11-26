@@ -16,7 +16,7 @@
 
 | 文件 | 安装方式 |
 | --- | --- |
-| [dsh-serve](<dsh-serve>)、[dsh-update](<dsh-update>)、[dsh-url](<dsh-url>)、[memo](<memo>) | 系统命令软链到仓库文件，修改后下次执行生效，无需重新部署 |
+| [dsh-serve](<dsh-serve>)、[dsh-update](<dsh-update>)、[dsh-url](<dsh-url>) | 系统命令软链到仓库文件，修改后下次执行生效，无需重新部署 |
 | [dsh-web@.service](<../../../etc/systemd/system/dsh-web@.service>) | 复制到 /etc/systemd/system |
 | [dsh-dev@.service](<../../../etc/systemd/system/dsh-dev@.service>)、[dsh-dev.env.example](<../../../etc/dsh-dev.env.example>) | 只在仓库中留档，`install.sh` 不部署；需要时按下文「dev profile」手动安装 |
 | [install.sh](<install.sh>) | 仅在仓库中运行，不安装到系统目录 |
@@ -57,11 +57,3 @@ sudo systemctl enable --now dsh-dev@$(id -un).service
 `dsh-update` 更新全局安装的 dsh 并重启服务：普通用户内部调用 sudo，root 直接执行；默认操作 `dsh-web@<当前用户名>.service`，可用 `DSH_SERVICE` 覆盖（例如 `DSH_SERVICE=dsh-dev@$(id -un).service`）。注意它升级的是全局安装，两个 profile 会一起变。加 `-n/--dry-run` 只解析版本并打印计划，不改动服务。
 
 `dsh-url` 从 systemd journal 中读取指定 profile 当前实例启动时输出的、带 `?token=` 的访问 URL：token 每次启动都会重新生成，旧 token 会失效。profile 默认 `web`，也可以传参数选择，例如 `dsh-url dev`；对应 unit 为 `dsh-<profile>@<当前用户名>.service`，要求它处于 active 状态。
-
-## 同步 memo
-
-[memo](<memo>) 保持与上游一致，不单独修改。在仓库根目录同步：
-
-```bash
-cp ~/.optmem/memo usr/local/bin/memo
-```
